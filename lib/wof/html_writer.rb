@@ -18,6 +18,7 @@ module Wof
   #   # => '<html><body><a href="http://...">link</a></body></html>'
   #
   class HtmlWriter
+
     def initialize(out)
       @out = out 
     end
@@ -65,6 +66,31 @@ module Wof
       end
       @out << (single ? " />"  : ">")
       return self
+    end
+
+    def self.test
+      w = new(out="")
+      expect(out).empty?
+
+      w.start_tag(:html)
+      w.start_tag("body")
+      w.text("abc")
+      expect(out) == "<html><body>abc"
+
+      w = new(out="")
+      w.start_tag('a', 'href' => 'http://')
+      w.encode_text('<>&')
+      w.end_tag('a')
+      expect(out) == '<a href="http://">&lt;&gt;&amp;</a>'
+
+      w = new(out="")
+      w.single_tag('img', 'src' => 'abc')
+      expect(out) == '<img src="abc" />'
+
+      w = new(out="")
+      w.single_tag('img', 'src' => 'abc', :alt => 'def')
+      expect(out).in('<img src="abc" alt="def" />',
+                     '<img alt="def" src="abc" />')
     end
 
   end # class HtmlWriter
