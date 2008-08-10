@@ -19,8 +19,14 @@ module Wof
   #
   class HtmlWriter
 
-    def initialize(out)
+    attr_accessor :out
+
+    def initialize(out="")
       @out = out 
+    end
+
+    def reset
+      @out.clear
     end
 
     def start_tag(tag, attributes=nil)
@@ -77,20 +83,22 @@ module Wof
       w.text("abc")
       expect(out) == "<html><body>abc"
 
-      w = new(out="")
+      w = new()
       w.start_tag('a', 'href' => 'http://')
       w.encode_text('<>&')
       w.end_tag('a')
-      expect(out) == '<a href="http://">&lt;&gt;&amp;</a>'
+      expect(w.out) == '<a href="http://">&lt;&gt;&amp;</a>'
 
-      w = new(out="")
+      w.reset
+      expect(w.out) == ""
+
       w.single_tag('img', 'src' => 'abc')
-      expect(out) == '<img src="abc" />'
+      expect(w.out) == '<img src="abc" />'
 
-      w = new(out="")
+      w.reset
       w.single_tag('img', 'src' => 'abc', :alt => 'def')
-      expect(out).in('<img src="abc" alt="def" />',
-                     '<img alt="def" src="abc" />')
+      expect(w.out).in('<img src="abc" alt="def" />',
+                       '<img alt="def" src="abc" />')
     end
 
   end # class HtmlWriter
