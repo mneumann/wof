@@ -11,15 +11,7 @@ class Root < Component
 end
 
 class Counter < Component
-  def load_state(state)
-    @value = state.get_integer('value', 0)
-    super
-  end
-
-  def dump_state(state)
-    state.set('value', @value) if @value != 0
-    super
-  end
+  state :value, :type => :integer, :external => 'v'
 
   def inc!() @value += 1 end
   def dec!() @value -= 1 end
@@ -32,8 +24,7 @@ class Counter < Component
   end
 end
 
-if __FILE__ == $0
-
+#if __FILE__ == $0
   require 'rubygems'
   require 'rack'
 
@@ -82,9 +73,9 @@ if __FILE__ == $0
       renderer = Renderer.new(next_state)
       renderer.render(root)
 
-      [200, {'Content-type' => 'text/html'}, renderer.to_s]
+      [200, {'Content-type' => ['text/html']}, [renderer.to_s]]
     end
   end
 
   Rack::Handler::WEBrick.run(Handler.new, :Port => 8082)
-end
+#end
