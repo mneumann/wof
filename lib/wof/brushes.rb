@@ -12,8 +12,10 @@ class AnchorBrush < Brush
 
   def with(inner)
     @renderer << %{<a href="}
-    @renderer << @renderer.current_component.component_url
-    @renderer << "?#{@renderer.encode_state(@action)}"
+    @renderer << @renderer.current_component.id
+    @renderer << ".#{@action}" if @action
+    state = @renderer.encode_state
+    @renderer << "?#{state}" unless state.empty?
     @renderer << %{">#{inner}</a>}
     nil
   end

@@ -4,78 +4,93 @@ require 'wof/component'
 require 'wof/state'
 require 'wof/renderer'
 
-class Root < Component
+class Page < Component
   def initialize
-    10.times { add_child Counter.new }
+    super()
+  end
+
+  def render(r)
+    r << "<html><body>"
+    super
+    r << "</body></html>"
+  end
+end
+
+class Root < Page
+  def on_setup
+    10.times {|i| Counter.new(self, i.to_s) }
   end
 end
 
 class Counter < Component
-  state :value, :type => :integer, :external => 'v'
+  def on_load(state)
+    @value = state.get_integer(@id, 'value', 0) 
+    super
+  end
 
-  def inc!() @value += 1 end
-  def dec!() @value -= 1 end
+  def on_dump(state)
+    state.set(@id, 'value', @value) if @value != 0
+    super
+  end
+
+  def on_action(state)
+    inc() if state.get(@id, 'inc', :no_action) != :no_action
+    dec() if state.get(@id, 'dec', :no_action) != :no_action
+  end
+
+  def inc() @value += 1 end
+  def dec() @value -= 1 end
 
   def render(r)
-    r.anchor.action(:dec!).with("--")
+    r.anchor.action(:dec).with("--")
     r.text " #{ @value } "
-    r.anchor.action(:inc!).with("++")
+    r.anchor.action(:inc).with("++")
     r.text "<br/>"
   end
 end
 
-#if __FILE__ == $0
-  require 'rubygems'
-  require 'rack'
 
-  class Handler
-    def call(env)
-      request = Rack::Request.new(env)
+  def component_attr(state, path, value)
+    component_path, action_path = path.split(".", 2)
+    if action_path
+      state[component_path] ||= {}
+      state[component_path][action_path] = value
+    end
+    return component_path, action_path
+  end 
 
-      root = Root.new
-      state = State.new
+  require 'webrick'
 
-      #
-      # Extract state out of params
-      #
+  s = WEBrick::HTTPServer.new(:Port => 2000, :Logger => WEBrick::Log.new('/dev/null'),
+                             :AccessLog => WEBrick::Log.new('/dev/null'))
+  s.mount_proc("/") {|req, res|
 
-      expanded = []
-      request.params.each do |k,v|
-        if k.start_with?("/")
-          # absolute path
-          expanded << [k, v] 
-        else
-          expanded << [request.path_info + "/." + k, v]
-        end
-      end
+    state = State.new
 
-      expanded.each do |k,v|
-        path, attribute = k.split(".", 2)
-        paths = path.split("/")
+    _, action = component_attr(state, req.path_info, nil)
+    req.query.each {|k,v| component_attr(state, k, v) }
 
-        paths.shift if paths.first.empty?
+    root = Root.new
+    root.on_load(state)
+    root.on_action(state)
 
-        cur_state = state
-        paths.each do |piece|
-          cur_state = state.substate(piece)
-        end
-        if attribute.end_with?('!')
-          cur_state.actions({attribute => []})  # TODO
-        else
-          cur_state.set(attribute, v)
-        end
-      end
+    state.clear
+    root.on_dump(state)
 
-      root.load_state(state)
-      root.invoke_actions(state)
-      next_state = root.dump_state(State.new)
-
-      renderer = Renderer.new(next_state)
+    if action
+      redirect_url = "/"
+      redirect_url << "?"
+      redirect_url << state.url_encode
+      res.status = 303
+      res['location'] = redirect_url
+    else
+      renderer = Renderer.new(state)
       renderer.render(root)
 
-      [200, {'Content-type' => ['text/html']}, [renderer.to_s]]
+      res.status = 200
+      res.body = renderer.to_s
+      res['Content-Type'] = "text/html"
     end
-  end
-
-  Rack::Handler::WEBrick.run(Handler.new, :Port => 8082)
-#end
+  }
+  trap('INT') { s.shutdown }
+  s.start

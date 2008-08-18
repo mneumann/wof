@@ -21,7 +21,7 @@ class Renderer
     old = @current_component
     @current_component = component
     begin
-      component.render(self)
+      component.on_render(self)
     ensure
       @current_component = old
     end
@@ -39,9 +39,7 @@ class Renderer
   #
   # TODO: compress using the current_component as current path
   #
-  def encode_state(action=nil)
-    pieces = @state.url_encode("", [])
-    pieces.unshift(action) if action
-    pieces.join("&")
+  def encode_state
+    @state.url_encode
   end
 end
