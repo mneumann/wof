@@ -26,7 +26,7 @@ module Wof
     end
 
     def reset
-      @out.clear
+      @out.replace('')
     end
 
     def start_tag(tag, attributes=nil)
@@ -53,7 +53,7 @@ module Wof
     # Emits +str+ as escaped HTML.
     #
     def encode_text(str)
-      @out << CGI.escape_html(str.to_s)
+      @out << CGI.escapeHTML(str.to_s)
       self
     end
 
