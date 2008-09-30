@@ -1,5 +1,15 @@
 $LOAD_PATH.unshift "../lib"
 
+class String
+  def start_with?(str)
+    self.size >= str.size and self[0, str.size] == str
+  end
+
+  def end_with?(str)
+    self.size >= str.size and self[self.size-str.size, str.size] == str
+  end
+end
+
 require 'wof/component'
 require 'wof/state'
 require 'wof/renderer'
@@ -25,50 +35,74 @@ end
 class Counter < Component
   def on_load(state)
     @value = state.get_integer(@id, 'value', 0) 
+    @state = state.get(@id, 'state', 'closed')
     super
   end
 
   def on_dump(state)
     state.set(@id, 'value', @value) if @value != 0
+    state.set(@id, 'state', 'open') if @state == 'open'
     super
   end
 
   def on_action(state)
-    inc() if state.get(@id, 'inc', :no_action) != :no_action
-    dec() if state.get(@id, 'dec', :no_action) != :no_action
+    %w(inc dec open submit).each {|action|
+      send(action) if state.get(@id, action, :no) != :no
+    }
   end
 
   def inc() @value += 1 end
   def dec() @value -= 1 end
+  def open()
+    @state = if @state == 'closed' then 'open' else 'closed' end
+  end
+
+  def submit
+    open
+  end
 
   def render(r)
     r.anchor.action(:dec).with("--")
-    r.text " #{ @value } "
+    r.text " "
+    if @state == 'open'
+      r << %{
+        <form method="POST">
+          <input type="hidden" name="#{@id}.submit" value="ok" />
+          <input type="text" name="#{@id}.value" value="#{@value}" />
+          <input type="submit" name="Close" value="close" />
+        </form>
+      }
+    else
+      r.anchor.action(:open).with(@value.to_s)
+    end
+    r.text " "
     r.anchor.action(:inc).with("++")
     r.text "<br/>"
   end
 end
 
+def component_attr(state, path, value)
+  component_path, action_path = path.split(".", 2)
+  if action_path
+    state[component_path] ||= {}
+    state[component_path][action_path] = value
+  end
+  return component_path, action_path
+end 
 
-  def component_attr(state, path, value)
-    component_path, action_path = path.split(".", 2)
-    if action_path
-      state[component_path] ||= {}
-      state[component_path][action_path] = value
-    end
-    return component_path, action_path
-  end 
+require 'rubygems'
+require 'rack'
+require 'pp'
 
-  require 'webrick'
+class Handler
 
-  s = WEBrick::HTTPServer.new(:Port => 2000, :Logger => WEBrick::Log.new('/dev/null'),
-                             :AccessLog => WEBrick::Log.new('/dev/null'))
-  s.mount_proc("/") {|req, res|
+  def call(env)
+    request = Rack::Request.new(env)
 
     state = State.new
 
-    _, action = component_attr(state, req.path_info, nil)
-    req.query.each {|k,v| component_attr(state, k, v) }
+    _, action = component_attr(state, request.path_info, nil)
+    request.params.each {|k,v| component_attr(state, k, v) }
 
     root = Root.new
     root.on_load(state)
@@ -77,20 +111,18 @@ end
     state.clear
     root.on_dump(state)
 
-    if action
+    if action or request.post? 
       redirect_url = "/"
       redirect_url << "?"
       redirect_url << state.url_encode
-      res.status = 303
-      res['location'] = redirect_url
+      [303, {'Location' => redirect_url}, []]
     else
       renderer = Renderer.new(state)
       renderer.render(root)
 
-      res.status = 200
-      res.body = renderer.to_s
-      res['Content-Type'] = "text/html"
+      [200, {'Content-type' => "text/html"}, [renderer.to_s]]
     end
-  }
-  trap('INT') { s.shutdown }
-  s.start
+  end
+end
+
+Rack::Handler::WEBrick.run(Handler.new, :Port => 8082)
