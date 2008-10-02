@@ -1,128 +1,65 @@
+require 'rubygems'
+
 $LOAD_PATH.unshift "../lib"
-
-class String
-  def start_with?(str)
-    self.size >= str.size and self[0, str.size] == str
-  end
-
-  def end_with?(str)
-    self.size >= str.size and self[self.size-str.size, str.size] == str
-  end
-end
-
 require 'wof/component'
-require 'wof/state'
-require 'wof/renderer'
+require 'wof/context'
+require 'wof/handler'
 
-class Page < Component
-  def initialize
-    super()
-  end
-
-  def render(r)
-    r << "<html><body>"
+class Page < Wof::Component
+  def on_render(context)
+    context << "<html><body>"
     super
-    r << "</body></html>"
+    context << "</body></html>"
   end
 end
 
-class Root < Page
-  def on_setup
+class Main < Page
+  def on_construct
     10.times {|i| Counter.new(self, i.to_s) }
   end
 end
 
-class Counter < Component
-  def on_load(state)
-    @value = state.get_integer(@id, 'value', 0) 
-    @state = state.get(@id, 'state', 'closed')
+class Counter < Wof::Component
+  def on_load(context)
+    @value = Integer(context[@id, 'value'] || 0)
+    @open = (context[@id, 'open'] == '1')
     super
   end
 
-  def on_dump(state)
-    state.set(@id, 'value', @value) if @value != 0
-    state.set(@id, 'state', 'open') if @state == 'open'
+  def on_dump(context)
+    context[@id, 'value'] = @value.to_s if @value and @value != 0
+    context[@id, 'open'] = '1' if @open
     super
   end
 
-  def on_action(state)
-    %w(inc dec open submit).each {|action|
-      send(action) if state.get(@id, action, :no) != :no
-    }
+  def on_action(context)
+    case context[@id, 'action']
+    when 'inc'
+      @value += 1
+    when 'dec'
+      @value -= 1
+    when 'toggle'
+      @open = !@open
+    end
+    super
   end
 
-  def inc() @value += 1 end
-  def dec() @value -= 1 end
-  def open()
-    @state = if @state == 'closed' then 'open' else 'closed' end
-  end
-
-  def submit
-    open
-  end
-
-  def render(r)
-    r.anchor.action(:dec).with("--")
-    r.text " "
-    if @state == 'open'
-      r << %{
+  def on_render(context)
+    context << %{<a href="#{@id}.dec?#{context.url_state}">--</a>}
+    context << " "
+    if @open
+      context << %{
         <form method="POST">
-          <input type="hidden" name="#{@id}.submit" value="ok" />
+          <input type="hidden" name="#{@id}.action" value="toggle" />
           <input type="text" name="#{@id}.value" value="#{@value}" />
           <input type="submit" name="Close" value="close" />
         </form>
       }
     else
-      r.anchor.action(:open).with(@value.to_s)
+      context << %{<a href="#{@id}.toggle?#{context.url_state}">#{ @value }</a>}
     end
-    r.text " "
-    r.anchor.action(:inc).with("++")
-    r.text "<br/>"
+    context << " "
+    context << %{<a href="#{@id}.inc?#{context.url_state}">++</a>}
+    context << "<br/>"
   end
 end
-
-def component_attr(state, path, value)
-  component_path, action_path = path.split(".", 2)
-  if action_path
-    state[component_path] ||= {}
-    state[component_path][action_path] = value
-  end
-  return component_path, action_path
-end 
-
-require 'rubygems'
-require 'rack'
-require 'pp'
-
-class Handler
-
-  def call(env)
-    request = Rack::Request.new(env)
-
-    state = State.new
-
-    _, action = component_attr(state, request.path_info, nil)
-    request.params.each {|k,v| component_attr(state, k, v) }
-
-    root = Root.new
-    root.on_load(state)
-    root.on_action(state)
-
-    state.clear
-    root.on_dump(state)
-
-    if action or request.post? 
-      redirect_url = "/"
-      redirect_url << "?"
-      redirect_url << state.url_encode
-      [303, {'Location' => redirect_url}, []]
-    else
-      renderer = Renderer.new(state)
-      renderer.render(root)
-
-      [200, {'Content-type' => "text/html"}, [renderer.to_s]]
-    end
-  end
-end
-
-Rack::Handler::WEBrick.run(Handler.new, :Port => 8082)

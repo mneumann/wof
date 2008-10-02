@@ -1,98 +1,85 @@
-class Component
-  attr_reader :id
+module Wof; end
 
+#
+# The root class of all components.
+#
+class Wof::Component
+
+  #
+  # Used to separate two id-path components 
+  #
   PATH_SEP = '/'.freeze
 
-  def initialize(parent=nil, id=nil)
-    pid = parent ? parent.id : PATH_SEP
-    @id =
-      if id
-        if id.start_with?(PATH_SEP) # absolute id
-          id
-        else # relative id
-          if pid.end_with?(PATH_SEP)
-            "#{pid}#{id}"
-          else
-            "#{pid}#{PATH_SEP}#{id}"
-          end
-        end
-      else
-        pid
-      end
+  attr_accessor :id
 
-    parent.add_child(self) if parent
-    on_setup
+  def initialize(parent=nil, id=nil, &block)
+    @id = (parent ? [parent.id, id].join(PATH_SEP) : id).freeze
+    block.call(self) if block
+    on_construct
+    parent.add(self) if parent
   end
 
-  def on_setup
+  def on_construct
   end
 
   #
-  # Load the state of the component and that of all subcomponents
-  # from +state+.
+  # Load the state of the component and of all subcomponents.
   #
-  def on_load(state)
-    each_child {|c| c.on_load(state) }
+  def on_load(context)
+    each {|child| child.on_load(context) }
   end
 
   #
-  # Dump the state of the component and all subcomponents into
-  # +state+.
+  # Dump the state of the component and of all subcomponents. 
   #
-  def on_dump(state)
-    each_child {|c| c.on_dump(state) }
+  def on_dump(context)
+    each {|child| child.on_dump(context) }
   end
 
-  def on_action(state)
-    each_child {|c| c.on_action(state) }
+  def on_action(context)
+    each {|child| child.on_action(context) }
   end
 
-  def on_render(renderer)
-    render(renderer)
+  def on_render(context)
+    each {|child| child.on_render(context)}
   end
 
-  def render(r)
-    each_child {|c| r.render(c)}
-  end
-
-  def add_child(child)
+  # --------------------------------------------------------
+  
+  def add(child)
     (@children ||= []) << child
   end
 
-  def children
-    @children ||= []
-  end
+  alias << add
 
-  protected
+  include Enumerable
 
-  def each_child(&block)
+  def each(&block)
     @children.each(&block) if @children
   end
 
   # --------------------------------------------------------
   # Testing
   # --------------------------------------------------------
+
   def self.test
+    #
     root = new()
-    expect(root.id) == '/'
+    expect(root.id).nil?
+    expect(root.to_a).empty?
 
-    # create children
-    c1 = new(root, 'c1')
-    c2 = new(root, 'c2')
-    c3 = new(root, '/absolute')
+    root.id = 'root'
+    expect(root.id) == 'root' 
 
-    expect(root.children).not.empty?
-    expect(root.children.size) == 3
+    #
+    button1 = new(root, 'but1')
+    expect(button1.id) == [root.id, 'but1'].join('/')
+    expect(root.to_a) == [button1]
 
-    # ordering of chilren
-    expect(root.children[0]) == c1
-    expect(root.children[1]) == c2
-    expect(root.children[2]) == c3
-
-    # test component ids
-    expect(c1.id) == '/c1'
-    expect(c2.id) == '/c2'
-    expect(c3.id) == '/absolute'
+    #
+    button2 = new(root, 'but2')
+    expect(button2.id) == [root.id, 'but2'].join('/')
+    expect(root.to_a) == [button1, button2]
   end
 
-end
+end # class Wof::Component
