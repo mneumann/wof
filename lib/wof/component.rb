@@ -5,43 +5,36 @@ module Wof; end
 #
 class Wof::Component
 
-  #
-  # Used to separate two id-path components 
-  #
-  PATH_SEP = '/'.freeze
-
   attr_accessor :id
 
-  def initialize(parent=nil, id=nil, &block)
-    @id = (parent ? [parent.id, id].join(PATH_SEP) : id).freeze
-    block.call(self) if block
-    on_construct
-    parent.add(self) if parent
+  def initialize(id=nil)
+    @id = id
   end
 
-  def on_construct
+  def /(name)
+    "#{@id || raise}/#{name}"
   end
 
   #
   # Load the state of the component and of all subcomponents.
   #
-  def on_load(context)
-    each {|child| child.on_load(context) }
+  def load(context)
+    each {|child| child.load(context) }
   end
 
   #
   # Dump the state of the component and of all subcomponents. 
   #
-  def on_dump(context)
-    each {|child| child.on_dump(context) }
+  def dump(context)
+    each {|child| child.dump(context) }
   end
 
-  def on_action(context)
-    each {|child| child.on_action(context) }
+  def invoke(context)
+    each {|child| child.invoke(context) }
   end
 
-  def on_render(context)
-    each {|child| child.on_render(context)}
+  def render(context)
+    each {|child| child.render(context)}
   end
 
   # --------------------------------------------------------
@@ -72,12 +65,12 @@ class Wof::Component
     expect(root.id) == 'root' 
 
     #
-    button1 = new(root, 'but1')
+    button1 = root.add new(root / 'but1')
     expect(button1.id) == [root.id, 'but1'].join('/')
     expect(root.to_a) == [button1]
 
     #
-    button2 = new(root, 'but2')
+    button2 = root.add new(root / 'but2')
     expect(button2.id) == [root.id, 'but2'].join('/')
     expect(root.to_a) == [button1, button2]
   end

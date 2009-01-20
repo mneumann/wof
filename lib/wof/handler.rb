@@ -6,34 +6,43 @@ module Wof; end
 class Wof::Handler
   require 'rack'
 
-  def initialize(page_class)
+  def initialize(page_class, mount_point='/')
     @page_class = page_class
+    @mount_point = mount_point
   end
 
   def call(env)
     request = Rack::Request.new(env)
     context = Wof::Context.new
 
-    cid, action = request.path_info.split(".", 2)
+    if i=request.path_info.index(@mount_point)
+      path = request.path_info[(i+@mount_point.size)..-1] || ''
+    else
+      raise
+    end
+
+    cid, action = path.split(".", 2)
     context[cid, 'action'] = action if action
     request.params.each {|k,v| context.state[k] = v }
 
     page = @page_class.new
-    page.on_load(context)
-    page.on_action(context)
+    page.load(context)
+    page.invoke(context)
 
     # use a new context for dumping
     context = Wof::Context.new
 
-    page.on_dump(context)
+    page.dump(context)
 
     if action or request.post? 
       redirect_url = "/"
-      redirect_url << "?"
-      redirect_url << context.url_state
+      if u = context.url_state
+        redirect_url << "?"
+        redirect_url << u
+      end
       [303, {'Location' => redirect_url}, []]
     else
-      page.on_render(context)
+      page.render(context)
       [200, {'Content-type' => "text/html"}, context.output]
     end
   end
